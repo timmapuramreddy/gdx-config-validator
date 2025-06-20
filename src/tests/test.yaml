@@ -1,0 +1,88 @@
+settings:
+  env: dev
+  load: full
+
+mappings:
+  - mapping_name: mapping_sf_opportunity
+    source_vendor: postgresql
+    source_connection: apttushubdv-gdx
+    source_database: apttushub
+    source_schema: ahgluadm
+    source_table_format: quoted #quoted/unquoted, default is unquoted
+    source_table: Territory2
+    source_columns_interested:
+      - "t2.\"Id\" as territory_id"
+      - "t2.\"SystemModstamp\" as created_dt"
+      - |
+        'gdx_user' AS created_by
+      - "t2.\"LastModifiedDate\" as last_upd_dt"
+      - |
+        'gdx_user' AS last_udp_by
+      - "u.\"Emp_Code__c\" as emp_code"
+      - "t2.\"Name\" as terr_code"
+      - |
+        CASE
+          WHEN t2."Stir_Code__c" IS NULL THEN NULL
+          WHEN t2."Stir_Code__c" = FLOOR(t2."Stir_Code__c") THEN CAST(t2."Stir_Code__c" AS INTEGER)::TEXT
+          ELSE RTRIM(RTRIM(TO_CHAR(t2."Stir_Code__c", 'FM999999999.999999999'), '0'), '.')
+        END as stir_code
+      - "t2.\"Description\""
+    from_clause: |
+      t2 JOIN ahgluadm."User" u
+        ON u."Id" = t2."LastModifiedById"
+    where_clause:
+    #delta_enabled: 'N'
+    delta_config:
+      enabled: 'Y'
+      query_template: >
+        SELECT
+          MIN(${target_schema}.${target_table}.last_upd_dt) as max_timestamp
+        FROM ${target_schema}.${target_table}
+      where_clause_template: >
+        (${column1_expr})
+      where_clause_expressions:
+        column1_expr: "t2.\"SystemModstamp\"::timestamp >= '${max_timestamp}'::timestamp"
+      target_where_clause_template: >
+        ${column1_expr}
+      target_where_clause_expressions:
+        column1_expr: "last_upd_dt::timestamp >= '${max_timestamp}'::timestamp"
+    #delta_filter_column: LastModifiedDate
+    where_clause_delta: #deleta where clause
+    target_vendor: postgresql
+    target_connection: apttushubdv-gdx
+    target_database: apttushub
+    target_schema: crmintadm
+    target_table: th_territory_in_tgt
+    upsert_key: ['territory_id']
+    target_table_cleanup: truncate
+    column_transformations: # Optional transformations for target columns
+      - source_alias: terr_description
+        target_column: terr_description
+        data_type: text
+        transformation_type: "string_manipulation"
+        transformations:
+          - type: "trim"
+        description: "Trim whitespace from territory description"
+    
+    # Partition Configuration - Enhanced for Auto-Partitioning
+    partition_column: "t2.\"SystemModstamp\" as created_dt"
+    
+    # Auto-partitioning settings
+    partition_enabled: "Y"  # Enable partitioning for this mapping
+    dynamic_partition_calculation: "Y"  # Enable dynamic calculation
+    partition_refresh_frequency: "everyrun"  # Recalculate every run
+    
+    # Mode-specific partition thresholds
+    delta_partition_threshold: 2000  # Apply partitioning for delta loads with > 2000 rows
+    full_partition_threshold: 10000  # Apply partitioning for full loads with > 10000 rows
+    
+    # Performance tuning parameters
+    target_partition_size_mb: 96  # Target partition size in MB
+    partition_buffer: 30  # Buffer percentage for partitioning
+    average_row_size: 2048  # Average row size in bytes (optional)
+    
+    # Fallback values (used if dynamic calculation is disabled or fails) 
+    partition_lowerbound: '2021-08-01 00:00:00'
+    partition_upperbound: '2025-12-31 00:00:00'
+    num_partitions_for_delta: 100
+    num_partitions: 900

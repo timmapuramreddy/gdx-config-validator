@@ -1,0 +1,61 @@
+# Include the README and other important files
+include README.md
+include CHANGELOG.md
+include PROJECT_OVERVIEW.md
+include LICENSE
+include pyproject.toml
+include requirements.txt
+include requirements-dev.txt
+
+# Include all documentation
+recursive-include docs *.md
+recursive-include docs *.rst
+recursive-include docs *.txt
+
+# Include test data but not test code in distribution
+include src/tests/test.yaml
+include src/tests/README.md
+
+# Include examples
+recursive-include src/examples *.py
+
+# Exclude development files
+exclude .gitignore
+exclude *.pyc
+exclude *.pyo
+exclude *.pyd
+exclude __pycache__
+exclude .pytest_cache
+exclude .mypy_cache
+exclude .coverage
+exclude htmlcov
+
+# Exclude virtual environment
+exclude venv
+recursive-exclude venv *
+
+# Exclude IDE files
+exclude .vscode
+exclude .idea
+recursive-exclude .vscode *
+recursive-exclude .idea *
+
+# Exclude OS files
+exclude .DS_Store
+exclude Thumbs.db
+exclude desktop.ini
+
+# Exclude backup files
+exclude *~
+exclude *.bak
+exclude *.swp
+exclude *.tmp
+
+# Exclude original migration files (if present)
+exclude comprehensive_yaml_validator.py
+exclude config_validator.py
+exclude gdx_job_validator.py
+exclude gdx_yaml_parser.py
+exclude operation_registry.py
+exclude validation_base.py
+exclude validation_result.py
