@@ -1365,6 +1365,59 @@ class ComprehensiveYamlValidator(GDXYamlParser):
 
         return errors
 
+    def _is_suspicious_sql_function(self, func_name: str, expression: str) -> bool:
+        """
+        Enhanced SQL function detection using word boundary matching.
+        
+        This method prevents false positives by ensuring suspicious function names
+        are detected only as actual function calls or standalone words, not as
+        substrings within legitimate column names or identifiers.
+        
+        Args:
+            func_name: The suspicious function name to check for
+            expression: The SQL expression to analyze
+            
+        Returns:
+            True if the function appears as an actual threat, False otherwise
+            
+        Examples:
+            _is_suspicious_sql_function("script", "script()") -> True (function call)
+            _is_suspicious_sql_function("script", "Description") -> False (column name)
+            _is_suspicious_sql_function("exec", "exec('cmd')") -> True (function call)
+            _is_suspicious_sql_function("exec", "executive_summary") -> False (column name)
+        """
+        try:
+            func_lower = func_name.lower()
+            expr_lower = expression.lower()
+            escaped_func = re.escape(func_lower)
+            
+            # Pattern 1: Function call with parentheses - script(, exec(, etc.
+            function_call_pattern = r'\b' + escaped_func + r'\s*\('
+            if re.search(function_call_pattern, expr_lower):
+                return True
+            
+            # Pattern 2: Function at word boundary followed by space - "script something"
+            word_boundary_pattern = r'\b' + escaped_func + r'\s+'
+            if re.search(word_boundary_pattern, expr_lower):
+                return True
+            
+            # Pattern 3: Function at end of expression or before punctuation
+            end_boundary_pattern = r'\b' + escaped_func + r'(?=\s*[,;)\]}\s]*$)'
+            if re.search(end_boundary_pattern, expr_lower):
+                return True
+            
+            # Pattern 4: Function at start of expression
+            start_boundary_pattern = r'^\s*' + escaped_func + r'\b'
+            if re.search(start_boundary_pattern, expr_lower):
+                return True
+                
+            return False
+            
+        except re.error:
+            # If regex fails, fall back to conservative detection
+            # This ensures we don't miss actual threats due to regex issues
+            return func_lower in expr_lower
+
     def _validate_sql_security(
         self, expression: str, expression_upper: str, dangerous_patterns: List[str]
     ) -> List[Dict[str, Any]]:
@@ -1430,7 +1483,7 @@ class ComprehensiveYamlValidator(GDXYamlParser):
             ]
 
             for func in suspicious_functions:
-                if func.lower() in expression.lower():
+                if self._is_suspicious_sql_function(func, expression):
                     errors.append(
                         {
                             "type": "suspicious_sql_function",

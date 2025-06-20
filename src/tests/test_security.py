@@ -200,6 +200,122 @@ class TestSQLSecurityValidation:
         assert len(critical_exceptions) == 0, f"Security validation should handle errors gracefully: {critical_exceptions}"
 
 @pytest.mark.security
+class TestSQLSecurityFalsePositives:
+    """Test that SQL security validation doesn't generate false positives"""
+    
+    def test_column_names_with_suspicious_substrings(self):
+        """Test that column names containing suspicious substrings are not flagged"""
+        config_with_description = {
+            'settings': {'env': 'test'},
+            'mappings': [{
+                'mapping_name': 'false_positive_test',
+                'source_table': 'test_table',
+                'target_table': 'target',
+                'source_columns_interested': [
+                    't2."Description" as description',  # Contains "script" but is safe
+                    'transcript_id as transcript',       # Contains "script" but is safe
+                    'executive_summary as summary',      # Contains "exec" but is safe
+                    'shell_name as shell_field',         # Contains "shell" but is safe
+                    'evaluation_score as eval_score'     # Contains "eval" but is safe
+                ]
+            }]
+        }
+        
+        result = validate_string(str(config_with_description), ValidatorType.SQL_ENHANCED)
+        
+        # Should NOT detect these as suspicious functions
+        all_issues = result.errors + result.info
+        false_positive_errors = [
+            error for error in all_issues 
+            if error.get('type') == 'suspicious_sql_function' and
+               error.get('severity') == 'critical' and
+               any(word in error.get('expression', '').lower() 
+                   for word in ['description', 'transcript', 'executive', 'shell_name', 'evaluation'])
+        ]
+        
+        assert len(false_positive_errors) == 0, f"Should not flag safe column names as suspicious: {false_positive_errors}"
+    
+    def test_legitimate_sql_functions_still_detected(self):
+        """Test that actual suspicious SQL functions are still detected"""
+        malicious_config = {
+            'settings': {'env': 'test'},
+            'mappings': [{
+                'mapping_name': 'actual_threats_test',
+                'source_table': 'test_table',
+                'target_table': 'target',
+                'source_columns_interested': [
+                    "id, script('malicious code') as script_result",      # Actual script() call
+                    "name, exec('dangerous command') as exec_result",     # Actual exec() call
+                    "data, xp_cmdshell('rm -rf /') as shell_result",      # Actual xp_cmdshell() call
+                    "info, eval('1+1; DROP TABLE users') as eval_result"  # Actual eval() call
+                ]
+            }]
+        }
+        
+        result = validate_string(str(malicious_config), ValidatorType.SQL_ENHANCED)
+        
+        # Should detect these as actual threats
+        all_issues = result.errors + result.info
+        threat_detections = [
+            error for error in all_issues 
+            if error.get('type') == 'suspicious_sql_function' and
+               error.get('severity') == 'critical'
+        ]
+        
+        assert len(threat_detections) > 0, "Should still detect actual suspicious function calls"
+        
+        # Verify specific threats are detected
+        detected_functions = [error.get('function', '') for error in threat_detections]
+        expected_threats = ['script', 'exec', 'xp_cmdshell', 'eval']
+        
+        for threat in expected_threats:
+            assert threat in detected_functions, f"Should detect {threat} function calls"
+    
+    def test_word_boundary_matching(self):
+        """Test that word boundaries are respected in SQL security validation"""
+        config_with_boundaries = {
+            'settings': {'env': 'test'},
+            'mappings': [{
+                'mapping_name': 'boundary_test',
+                'source_table': 'test_table',
+                'target_table': 'target',
+                'source_columns_interested': [
+                    # These should NOT be flagged (word boundaries)
+                    'subscription_id as sub_id',           # Contains "script" in middle
+                    'manuscript_title as title',           # Contains "script" in middle  
+                    'description_text as desc',            # Contains "script" in middle
+                    'execute_summary as summary',          # Contains "exec" at start but different word
+                    
+                    # These SHOULD be flagged (actual function calls)
+                    'id, script() as danger1',             # Actual script() function
+                    'name, exec() as danger2',             # Actual exec() function
+                ]
+            }]
+        }
+        
+        result = validate_string(str(config_with_boundaries), ValidatorType.SQL_ENHANCED)
+        
+        all_issues = result.errors + result.info
+        suspicious_detections = [
+            error for error in all_issues 
+            if error.get('type') == 'suspicious_sql_function' and
+               error.get('severity') == 'critical'
+        ]
+        
+        # Should detect the actual function calls (may have duplicates due to multiple validation passes)
+        assert len(suspicious_detections) > 0, f"Should detect threats: {suspicious_detections}"
+        
+        detected_functions = list(set([error.get('function', '') for error in suspicious_detections]))
+        assert 'script' in detected_functions, "Should detect script() function call"
+        assert 'exec' in detected_functions, "Should detect exec() function call"
+        
+        # Verify we're not detecting the safe column names
+        detected_expressions = [error.get('expression', '') for error in suspicious_detections]
+        safe_expressions = ['subscription_id', 'manuscript_title', 'description_text', 'execute_summary']
+        for safe_expr in safe_expressions:
+            assert not any(safe_expr in expr for expr in detected_expressions), f"Should not detect safe expression: {safe_expr}"
+
+@pytest.mark.security
 class TestSecurityValidationPerformance:
     """Test performance of security validation"""
     
