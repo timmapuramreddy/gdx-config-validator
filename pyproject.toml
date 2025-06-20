@@ -41,9 +41,11 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/mohanreddy/gdx-config-validator"
-Repository = "https://github.com/mohanreddy/gdx-config-validator"
-Issues = "https://github.com/mohanreddy/gdx-config-validator/issues"
+Homepage = "https://github.com/timmapuramreddy/gdx-config-validator"
+Repository = "https://github.com/timmapuramreddy/gdx-config-validator"
+Issues = "https://github.com/timmapuramreddy/gdx-config-validator/issues"
+Documentation = "https://github.com/timmapuramreddy/gdx-config-validator/blob/main/docs/README.md"
+Changelog = "https://github.com/timmapuramreddy/gdx-config-validator/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["src"]
